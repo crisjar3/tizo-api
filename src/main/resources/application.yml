@@ -1,0 +1,77 @@
+spring:
+  application:
+    name: tizo-api
+  profiles:
+    default: local
+  datasource:
+    url: ${TIZO_DB_URL:jdbc:postgresql://localhost:5432/tizo}
+    username: ${TIZO_DB_USERNAME:tizo}
+    password: ${TIZO_DB_PASSWORD:tizo-local-only}
+    hikari:
+      maximum-pool-size: ${TIZO_DB_POOL_SIZE:10}
+      connection-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        default_batch_fetch_size: 50
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+  tomcat:
+    max-http-form-post-size: 1MB
+    max-swallow-size: 1MB
+    connection-timeout: 10s
+    threads:
+      max: 200
+      min-spare: 10
+  forward-headers-strategy: none
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+tizo:
+  demo:
+    enabled: false
+    customer-id: customer-001
+  rate-limit:
+    enabled: true
+    requests-per-minute: 60
+    burst-capacity: 20
+    cache-maximum-size: 10000
+    trusted-proxies: 127.0.0.1,::1
+  effects:
+    fixed-delay: 5s
+    lease-duration: 30s
+    max-attempts: 5
+
+scalar:
+  enabled: true
+  url: /openapi/openapi.yaml
+  path: /docs

@@ -1,0 +1,27 @@
+spring:
+  config:
+    activate:
+      on-profile: production
+  datasource:
+    url: ${TIZO_DB_URL}
+    username: ${TIZO_DB_USERNAME}
+    password: ${TIZO_DB_PASSWORD}
+  flyway:
+    locations: classpath:db/migration
+
+tizo:
+  demo:
+    enabled: false
+
+server:
+  forward-headers-strategy: none
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.tizo.ecommerce: INFO

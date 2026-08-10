@@ -1,0 +1,16 @@
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/local
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+tizo:
+  demo:
+    enabled: true
+  rate-limit:
+    enabled: false
+
+management:
+  server:
+    port: 0

@@ -1,0 +1,14 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+  flyway:
+    locations: classpath:db/migration,classpath:db/local
+
+tizo:
+  demo:
+    enabled: true
+
+logging:
+  level:
+    com.tizo.ecommerce: DEBUG

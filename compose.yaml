@@ -1,0 +1,22 @@
+name: tizo-api
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: tizo
+      POSTGRES_USER: tizo
+      POSTGRES_PASSWORD: tizo-local-only
+    ports:
+      - "${TIZO_POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tizo -d tizo"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - tizo-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  tizo-postgres-data:
