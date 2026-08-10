@@ -1,0 +1,124 @@
+name: Deploy AWS production
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tizo-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  OPENAPI_FILE: src/main/openapi/openapi.yaml
+  REDOCLY_TELEMETRY: off
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify contract and application
+        run: |
+          npx --yes @redocly/cli@2.46.0 lint "$OPENAPI_FILE"
+          chmod 0755 mvnw
+          ./mvnw -B -ntp clean verify
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    outputs:
+      image_ref: ${{ steps.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.2
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v4
+
+      - id: build
+        name: Build and push image
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - id: image
+        name: Export immutable image reference
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "ref=${REGISTRY}/${ECR_REPOSITORY}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Scan the published image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.ref }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.2
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Deploy by digest through Systems Manager
+        env:
+          INSTANCE_ID: ${{ vars.AWS_EC2_INSTANCE_ID }}
+          IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
+        run: |
+          command="sudo /opt/tizo/bin/deploy-container.sh '${IMAGE_REF}'"
+          parameters=$(jq --null-input --compact-output --arg command "$command" '{commands:[$command]}')
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy ${GITHUB_SHA}" \
+            --parameters "$parameters" \
+            --query 'Command.CommandId' --output text)
+          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID"
+          aws ssm get-command-invocation \
+            --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'

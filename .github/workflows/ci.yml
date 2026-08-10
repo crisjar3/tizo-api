@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REDOCLY_TELEMETRY: off
+  OPENAPI_FILE: src/main/openapi/openapi.yaml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Lint and bundle OpenAPI
+        run: |
+          npx --yes @redocly/cli@2.46.0 lint "$OPENAPI_FILE"
+          mkdir -p target/openapi
+          npx --yes @redocly/cli@2.46.0 bundle "$OPENAPI_FILE" --output target/openapi/openapi.yaml
+
+      - name: Verify application with PostgreSQL Testcontainers
+        run: |
+          chmod 0755 mvnw
+          ./mvnw -B -ntp clean verify
+
+      - name: Build runtime image
+        run: docker build --tag tizo-api:ci .
+
+      - name: Smoke-test immutable non-root container
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          network="tizo-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          database="${network}-postgres"
+          application="${network}-api"
+          cleanup() {
+            docker rm --force "$application" "$database" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create "$network"
+          docker run --detach --name "$database" --network "$network" \
+            --env POSTGRES_DB=tizo --env POSTGRES_USER=tizo \
+            --env POSTGRES_PASSWORD=smoke-only postgres:17.6-alpine
+          for attempt in {1..30}; do
+            docker exec "$database" pg_isready --username tizo --dbname tizo && break
+            test "$attempt" -lt 30
+            sleep 2
+          done
+
+          docker run --detach --name "$application" --network "$network" \
+            --read-only --tmpfs /tmp:size=64m,mode=1777 \
+            --security-opt no-new-privileges --cap-drop ALL \
+            --env SPRING_PROFILES_ACTIVE=local \
+            --env TIZO_DB_URL="jdbc:postgresql://${database}:5432/tizo" \
+            --env TIZO_DB_USERNAME=tizo --env TIZO_DB_PASSWORD=smoke-only \
+            --env MANAGEMENT_PORT=8081 tizo-api:ci
+          for attempt in {1..60}; do
+            if docker exec "$application" wget -q -T 2 -O /dev/null \
+              http://127.0.0.1:8081/actuator/health/readiness; then
+              break
+            fi
+            test "$attempt" -lt 60
+            sleep 2
+          done
+
+          test "$(docker inspect --format '{{.Config.User}}' "$application")" = '10001:10001'
+          docker exec "$application" wget -q -T 2 -O /dev/null \
+            http://127.0.0.1:8080/api/catalog/products
+
+      - name: Scan image for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: tizo-api:ci
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+  openapi-compatibility:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install checksum-verified oasdiff
+        run: |
+          curl --fail --location --silent --show-error \
+            --output /tmp/oasdiff.tar.gz \
+            https://github.com/oasdiff/oasdiff/releases/download/v1.26.1/oasdiff_1.26.1_linux_amd64.tar.gz
+          echo "ea0007fe536c7915785f754885d2afdb11352d6a14531950edf9d601a2baa674  /tmp/oasdiff.tar.gz" \
+            | sha256sum --check --strict
+          tar --extract --gzip --file /tmp/oasdiff.tar.gz --directory /tmp oasdiff
+
+      - name: Reject breaking public-contract changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git show "origin/${BASE_REF}:${OPENAPI_FILE}" > /tmp/openapi-base.yaml
+          /tmp/oasdiff breaking /tmp/openapi-base.yaml "$OPENAPI_FILE"
