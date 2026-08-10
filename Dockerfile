@@ -13,6 +13,8 @@ COPY src src
 RUN ./mvnw -B -ntp -DskipTests clean package
 
 FROM eclipse-temurin:${TEMURIN_VERSION}-jre-alpine AS runtime
+ARG TIZO_DEMO_ENABLED=false
+ARG TIZO_DEMO_CUSTOMER_ID=customer-001
 RUN apk upgrade --no-cache \
     && addgroup -S -g 10001 tizo \
     && adduser -S -D -H -u 10001 -G tizo tizo
@@ -21,7 +23,10 @@ WORKDIR /app
 COPY --from=build --chown=tizo:tizo /workspace/target/tizo-api-*.jar /app/tizo-api.jar
 
 ENV JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=/tmp -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError" \
-    SPRING_PROFILES_ACTIVE=production
+    SPRING_PROFILES_ACTIVE=production \
+    TIZO_DEMO_ENABLED=${TIZO_DEMO_ENABLED} \
+    TIZO_DEMO_CUSTOMER_ID=${TIZO_DEMO_CUSTOMER_ID} \
+    TIZO_DEMO_TOOLS_ENABLED=false
 
 USER 10001:10001
 EXPOSE 8080 8081

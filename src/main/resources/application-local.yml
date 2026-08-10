@@ -9,7 +9,8 @@ tizo:
   cors:
     allowed-origins: ${TIZO_CORS_ALLOWED_ORIGINS:http://localhost:4200}
   demo:
-    enabled: true
+    enabled: ${TIZO_DEMO_ENABLED:true}
+    tools-enabled: ${TIZO_DEMO_TOOLS_ENABLED:true}
 
 logging:
   level:

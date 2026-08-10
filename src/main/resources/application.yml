@@ -77,8 +77,9 @@ tizo:
   cors:
     allowed-origins: ${TIZO_CORS_ALLOWED_ORIGINS:}
   demo:
-    enabled: false
-    customer-id: customer-001
+    enabled: ${TIZO_DEMO_ENABLED:false}
+    customer-id: ${TIZO_DEMO_CUSTOMER_ID:customer-001}
+    tools-enabled: ${TIZO_DEMO_TOOLS_ENABLED:false}
   rate-limit:
     enabled: true
     requests-per-minute: 60

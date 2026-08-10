@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
@@ -24,7 +25,10 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
-@ConditionalOnProperty(name = "tizo.demo.enabled", havingValue = "true")
+@Profile("!production")
+@ConditionalOnProperty(
+        name = {"tizo.demo.enabled", "tizo.demo.tools-enabled"},
+        havingValue = "true")
 public class DemoScenarioInterceptor extends OncePerRequestFilter {
 
     private static final String RESET_PATH = "/api/mock/reset";

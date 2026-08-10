@@ -9,6 +9,7 @@ import java.time.Instant;
 import javax.sql.DataSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
@@ -16,7 +17,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@ConditionalOnProperty(name = "tizo.demo.enabled", havingValue = "true")
+@Profile("!production")
+@ConditionalOnProperty(
+        name = {"tizo.demo.enabled", "tizo.demo.tools-enabled"},
+        havingValue = "true")
 public class DemoResetService {
 
     private static final long RESET_LOCK_ID = 8_149_522_026L;

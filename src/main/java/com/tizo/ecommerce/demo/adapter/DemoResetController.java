@@ -8,11 +8,15 @@ import com.tizo.ecommerce.generated.model.ResetMockResponse;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@ConditionalOnProperty(name = "tizo.demo.enabled", havingValue = "true")
+@Profile("!production")
+@ConditionalOnProperty(
+        name = {"tizo.demo.enabled", "tizo.demo.tools-enabled"},
+        havingValue = "true")
 public class DemoResetController implements DemoApi {
 
     private final DemoResetService resetService;

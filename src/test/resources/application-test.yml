@@ -8,6 +8,7 @@ spring:
 tizo:
   demo:
     enabled: true
+    tools-enabled: true
   rate-limit:
     enabled: false
   effects:

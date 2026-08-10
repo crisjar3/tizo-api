@@ -68,6 +68,9 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            TIZO_DEMO_ENABLED=${{ vars.TIZO_DEMO_ENABLED || 'true' }}
+            TIZO_DEMO_CUSTOMER_ID=${{ vars.TIZO_DEMO_CUSTOMER_ID || 'customer-001' }}
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha

@@ -4,9 +4,9 @@ API REST contract-first para el ecommerce Angular de Tizo. Implementa catálogo,
 pedidos del cliente, cancelaciones, operación interna, resolución concurrente, auditoría y efectos durables sobre
 Java 21, Spring Boot 4.1 y PostgreSQL.
 
-> Estado de seguridad: el perfil local usa identidades demo. El perfil `production` desactiva esas identidades y
-> rechaza los casos de uso protegidos hasta conectar un proveedor real de autenticación/autorización. No se debe
-> publicar esta API a Internet sin completar esa integración y protegerla mediante ALB HTTPS y AWS WAF.
+> Estado de seguridad: el perfil local usa identidades demo. El perfil `production` las desactiva por defecto; el
+> workflow puede habilitar temporalmente una identidad demo restringida sin registrar reset ni fault injection.
+> Esta modalidad no reemplaza autenticación/autorización real y no se debe publicar a Internet como solución final.
 
 ## Decisiones técnicas
 
@@ -38,8 +38,9 @@ flowchart LR
     MVC --> C
 ```
 
-Los módulos principales son `catalog`, `sales`, `operations`, `demo` y `shared`. `demo` sólo registra reset y fault
-injection cuando `tizo.demo.enabled=true`.
+Los módulos principales son `catalog`, `sales`, `operations`, `demo` y `shared`. La identidad demo se habilita con
+`TIZO_DEMO_ENABLED`; el reset y fault injection requieren además `TIZO_DEMO_TOOLS_ENABLED=true` y nunca se registran
+con el perfil `production`.
 
 ## Requisitos
 
@@ -90,14 +91,27 @@ pruebas de integración y end-to-end incluidas en `src/test`.
 
 ## Perfiles
 
-| Perfil | Demo | Flyway | Logging | Uso |
-|---|---:|---|---|---|
-| `local` | Sí | `db/migration` + `db/local` | Consola legible/DEBUG de aplicación | Desarrollo manual |
-| `test` | Sí | `db/migration` + `db/local` | Consola | Integración aislada |
-| `production` | No | Sólo `db/migration` | JSON Logstash/stdout | Contenedor AWS |
+| Perfil | Identidad demo | Herramientas demo | Flyway | Logging | Uso |
+|---|---:|---:|---|---|---|
+| `local` | Sí | Sí | `db/migration` + `db/local` | Consola legible/DEBUG de aplicación | Desarrollo manual |
+| `test` | Sí | Sí | `db/migration` + `db/local` | Consola | Integración aislada |
+| `production` | Configurable | No | Sólo `db/migration` | JSON Logstash/stdout | Contenedor AWS |
 
 Producción exige `TIZO_DB_URL`, `TIZO_DB_USERNAME` y `TIZO_DB_PASSWORD`. Actuator escucha sólo en loopback; `/readyz`
 y `/livez` se añaden al puerto de aplicación para healthchecks del ALB sin publicar Prometheus.
+
+### Identidad demo restringida en el despliegue
+
+El workflow de producción construye la imagen con `TIZO_DEMO_ENABLED` y `TIZO_DEMO_CUSTOMER_ID`, tomados de las
+variables del environment `production` de GitHub. Mientras esas variables no existan, el despliegue usa
+`TIZO_DEMO_ENABLED=true` y `TIZO_DEMO_CUSTOMER_ID=customer-001`. Para desactivar posteriormente la identidad demo,
+configure `TIZO_DEMO_ENABLED=false` en ese environment y vuelva a ejecutar el workflow.
+
+La imagen fija `TIZO_DEMO_TOOLS_ENABLED=false` y los componentes destructivos también están excluidos mediante el
+perfil `production`. Así, la identidad implícita permite temporalmente los casos de uso `/api/me/*`, pero
+`POST /api/mock/reset` y los escenarios de fault injection permanecen ausentes. La aplicación continúa usando la
+base indicada por `TIZO_DB_URL`; el cliente configurado debe existir allí. Esta modalidad no sustituye autenticación
+real y no debe considerarse aislamiento entre usuarios.
 
 ## Verificación
 

@@ -16,7 +16,8 @@ spring:
 
 tizo:
   demo:
-    enabled: false
+    enabled: ${TIZO_DEMO_ENABLED:false}
+    tools-enabled: false
 
 server:
   forward-headers-strategy: none

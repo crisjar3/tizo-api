@@ -589,7 +589,7 @@ paths:
       tags: [Demo]
       operationId: resetDemo
       summary: Restaurar datos y escenario de demo
-      description: Esta operación no existe cuando el entorno productivo desactiva demo.
+      description: Esta operación sólo existe fuera de production cuando las herramientas demo están habilitadas.
       requestBody:
         required: true
         content:
