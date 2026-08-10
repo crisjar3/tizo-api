@@ -1,0 +1,8 @@
+extends:
+  - recommended-strict
+
+rules:
+  # These routes are fixed by the existing Angular/MSW contract. Spring MVC resolves
+  # the literal `by-idempotency-key` segment before path variables, and integration
+  # tests cover the routing. A future v2 should move reconciliation under `/operations`.
+  no-ambiguous-paths: off
