@@ -55,7 +55,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          mask-aws-account-id: true
+          mask-aws-account-id: false
 
       - id: ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -103,13 +103,17 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          mask-aws-account-id: true
+          mask-aws-account-id: false
 
       - name: Deploy by digest through Systems Manager
         env:
           INSTANCE_ID: ${{ vars.AWS_EC2_INSTANCE_ID }}
           IMAGE_REF: ${{ needs.publish.outputs.image_ref }}
         run: |
+          if [[ ! "$IMAGE_REF" =~ @sha256:[a-f0-9]{64}$ ]]; then
+            echo '::error::Publish did not provide an immutable ECR image digest.'
+            exit 1
+          fi
           command="sudo /opt/tizo/bin/deploy-container.sh '${IMAGE_REF}'"
           parameters=$(jq --null-input --compact-output --arg command "$command" '{commands:[$command]}')
           command_id=$(aws ssm send-command \
@@ -118,7 +122,14 @@ jobs:
             --comment "Deploy ${GITHUB_SHA}" \
             --parameters "$parameters" \
             --query 'Command.CommandId' --output text)
-          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID"
-          aws ssm get-command-invocation \
+          if ! aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID"; then
+            aws ssm get-command-invocation \
+              --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+              --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
+            exit 1
+          fi
+          result=$(aws ssm get-command-invocation \
             --command-id "$command_id" --instance-id "$INSTANCE_ID" \
-            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}')
+          echo "$result"
+          [[ $(jq --raw-output '.Status' <<<"$result") == Success ]]
