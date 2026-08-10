@@ -15,9 +15,12 @@ public class JpaIdempotencyAdapter {
     }
 
     public void acquireTransactionLock(String scope, String key) {
-        jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:lockName, 0))")
+        jdbc.sql("""
+                        SELECT 1 AS acquired
+                        FROM pg_advisory_xact_lock(hashtextextended(:lockName, 0))
+                        """)
                 .param("lockName", scope + ":" + key)
-                .query(Long.class)
+                .query(Integer.class)
                 .single();
     }
 

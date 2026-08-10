@@ -56,5 +56,16 @@ public abstract class PostgresIntegrationTest {
                     cancellation_request_item, cancellation_request, order_item, customer_order,
                     cart_item RESTART IDENTITY CASCADE
                 """).update());
+        transactions.executeWithoutResult(status -> jdbc.sql("""
+                UPDATE product SET stock = CASE id
+                    WHEN 'product-001' THEN 25
+                    WHEN 'product-002' THEN 18
+                    WHEN 'product-003' THEN 12
+                    WHEN 'product-004' THEN 8
+                    WHEN 'product-005' THEN 0
+                    ELSE stock END,
+                    version = 0,
+                    updated_at = '2026-01-01T00:00:00Z'
+                """).update());
     }
 }
