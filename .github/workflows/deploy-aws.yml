@@ -3,7 +3,7 @@ name: Deploy AWS production
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    branches: ['main']
 
 permissions:
   contents: read
@@ -69,7 +69,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
