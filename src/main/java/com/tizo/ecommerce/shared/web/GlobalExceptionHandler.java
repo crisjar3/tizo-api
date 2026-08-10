@@ -100,7 +100,7 @@ public class GlobalExceptionHandler {
     ResponseEntity<ProblemDetail> handleDatabaseLock(Exception exception, HttpServletRequest request) {
         metrics.concurrencyConflict("database_lock");
         return response(409, "CONFLICT", "CONCURRENT_MODIFICATION",
-                "Otra operaciÃ³n modificÃ³ el recurso al mismo tiempo; vuelva a intentar.",
+                "Otra operación modificó el recurso al mismo tiempo; vuelva a intentar.",
                 true, "RETRY", List.of(), request);
     }
 

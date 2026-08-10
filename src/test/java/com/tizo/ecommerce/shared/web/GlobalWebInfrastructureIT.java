@@ -1,6 +1,7 @@
 package com.tizo.ecommerce.shared.web;
 
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -23,6 +24,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -76,6 +78,15 @@ class GlobalWebInfrastructureIT extends PostgresIntegrationTest {
                 .andExpect(jsonPath("$.error.fieldErrors[0].field").value("name"));
     }
 
+    @Test
+    void returnsLegibleUtf8ForConcurrencyConflict() throws Exception {
+        mvc.perform(get("/test/concurrent"))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().string(containsString("Otra operación modificó el recurso")))
+                .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
+    }
+
     @TestConfiguration
     static class EndpointConfiguration {
 
@@ -96,6 +107,11 @@ class GlobalWebInfrastructureIT extends PostgresIntegrationTest {
         @GetMapping("/test/domain")
         void domainFailure() {
             throw DomainException.validation("TEST_INVALID", "La operación de prueba no es válida.");
+        }
+
+        @GetMapping("/test/concurrent")
+        void concurrentFailure() {
+            throw new CannotAcquireLockException("internal database detail");
         }
 
         @PostMapping("/test/validated")

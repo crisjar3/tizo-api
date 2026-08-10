@@ -1,0 +1,1396 @@
+openapi: 3.1.0
+info:
+  title: Tizo Ecommerce API
+  version: 1.0.0
+  description: |
+    Contrato HTTP entre Tizo Ecommerce Angular y la API real. OpenAPI es la fuente de verdad.
+    Los errores implementan RFC 9457 e incluyen la extensión `error` compatible con Angular.
+  contact:
+    name: Tizo Engineering
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: /
+    description: Mismo origen; el host se configura por entorno
+tags:
+  - name: Catalog
+    description: Consulta pública del catálogo y sus productos.
+  - name: Cart
+    description: Carrito perteneciente al cliente actual.
+  - name: Customer Orders
+    description: Checkout, reconciliación y pedidos visibles para el cliente.
+  - name: Customer Cancellations
+    description: Solicitudes de cancelación iniciadas por el cliente.
+  - name: Operators
+    description: Operadores disponibles para el contexto de demo.
+  - name: Operations Orders
+    description: Proyección logística y operacional de pedidos.
+  - name: Operations Cancellations
+    description: Gestión, resolución, reconciliación e historial de cancelaciones.
+  - name: Demo
+    description: Capacidades exclusivas de entornos de desarrollo y demostración.
+
+security: []
+
+paths:
+  /api/catalog/products:
+    get:
+      tags: [Catalog]
+      operationId: listProducts
+      summary: Listar productos
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: category
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, price, createdAt]
+            default: createdAt
+        - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Catálogo paginado
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/catalog/products/{productId}:
+    get:
+      tags: [Catalog]
+      operationId: getProduct
+      summary: Obtener detalle de producto
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Producto encontrado
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/me/cart:
+    get:
+      tags: [Cart]
+      operationId: getCart
+      summary: Obtener carrito del cliente actual
+      responses:
+        '200':
+          description: Carrito actual
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/me/cart/items/{productId}:
+    put:
+      tags: [Cart]
+      operationId: updateCartItem
+      summary: Agregar o actualizar una línea del carrito
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCartItemRequest' }
+      responses:
+        '200':
+          description: Carrito actualizado
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [Cart]
+      operationId: deleteCartItem
+      summary: Eliminar una línea del carrito de forma idempotente
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204':
+          description: Línea ausente después de la operación
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /api/me/orders:
+    post:
+      tags: [Customer Orders]
+      operationId: createOrder
+      summary: Crear un pedido desde el carrito
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderRequest' }
+      responses:
+        '201':
+          description: Pedido creado o resultado idempotente reproducido
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+            Location:
+              description: URI del pedido creado
+              schema: { type: string, format: uri-reference }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateOrderResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [Customer Orders]
+      operationId: listCustomerOrders
+      summary: Listar pedidos del cliente actual
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, displayNumber]
+            default: createdAt
+        - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Pedidos paginados
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerOrderListResponse' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/me/orders/by-idempotency-key/{idempotencyKey}:
+    get:
+      tags: [Customer Orders]
+      operationId: reconcileCheckout
+      summary: Reconciliar un checkout por clave idempotente
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Resultado confirmado
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutReconciliationResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/me/orders/{orderId}:
+    get:
+      tags: [Customer Orders]
+      operationId: getCustomerOrder
+      summary: Obtener el detalle de un pedido para el cliente
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Proyección del cliente
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerOrderDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/me/orders/{orderId}/cancellation-requests:
+    post:
+      tags: [Customer Cancellations]
+      operationId: createCustomerCancellation
+      summary: Crear una solicitud de cancelación del cliente
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCustomerCancellationRequest' }
+      responses:
+        '201':
+          description: Solicitud creada o reproducida
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+            Location:
+              schema: { type: string, format: uri-reference }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerCancellationReceipt' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/me/cancellation-requests/by-idempotency-key/{idempotencyKey}:
+    get:
+      tags: [Customer Cancellations]
+      operationId: reconcileCustomerCancellation
+      summary: Reconciliar creación de cancelación del cliente
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Resultado confirmado
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerCancellationReconciliationResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/operators:
+    get:
+      tags: [Operators]
+      operationId: listOperators
+      summary: Listar operadores
+      parameters:
+        - name: active
+          in: query
+          schema: { type: boolean }
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 160 }
+      responses:
+        '200':
+          description: Operadores visibles
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperatorListResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/orders:
+    get:
+      tags: [Operations Orders]
+      operationId: listOpsOrders
+      summary: Listar pedidos para operaciones
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: cancellationStatus
+          in: query
+          schema: { $ref: '#/components/schemas/OrderCancellationStatus' }
+        - name: storeId
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - name: hubId
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - $ref: '#/components/parameters/CreatedFrom'
+        - $ref: '#/components/parameters/CreatedTo'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, displayNumber]
+            default: createdAt
+        - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Pedidos operacionales paginados
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpsOrderListResponse' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/orders/{orderId}:
+    get:
+      tags: [Operations Orders]
+      operationId: getOpsOrder
+      summary: Obtener detalle operacional de pedido
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Proyección operacional
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpsOrderDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/cancellation-requests:
+    post:
+      tags: [Operations Cancellations]
+      operationId: createOpsCancellation
+      summary: Crear una solicitud operacional
+      security:
+        - DemoOperator: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOpsCancellationRequest' }
+      responses:
+        '201':
+          description: Solicitud creada o reproducida
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+            Location:
+              schema: { type: string, format: uri-reference }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateOpsCancellationResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    get:
+      tags: [Operations Cancellations]
+      operationId: listCancellationRequests
+      summary: Listar solicitudes de cancelación
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/CancellationRequestStatus' }
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: reasonCode
+          in: query
+          schema: { $ref: '#/components/schemas/CancellationReasonCode' }
+        - name: requestedByType
+          in: query
+          schema: { $ref: '#/components/schemas/ActorType' }
+        - name: operatorId
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - $ref: '#/components/parameters/CreatedFrom'
+        - $ref: '#/components/parameters/CreatedTo'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [requestedAt, resolvedAt, orderDisplayNumber]
+            default: requestedAt
+        - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Solicitudes paginadas y conteos filtrados
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CancellationRequestListResponse' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/cancellation-requests/by-idempotency-key/{idempotencyKey}:
+    get:
+      tags: [Operations Cancellations]
+      operationId: reconcileOpsCancellation
+      summary: Reconciliar una mutación operacional
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: scope
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/IdempotencyScope' }
+      responses:
+        '200':
+          description: Resultado confirmado
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpsCancellationReconciliationResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/cancellation-requests/{requestId}:
+    get:
+      tags: [Operations Cancellations]
+      operationId: getCancellationRequest
+      summary: Obtener detalle de solicitud
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Detalle operacional de cancelación
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CancellationRequestDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/cancellation-requests/{requestId}/approve:
+    post:
+      tags: [Operations Cancellations]
+      operationId: approveCancellationRequest
+      summary: Aprobar y aplicar una cancelación
+      security:
+        - DemoOperator: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveCancellationRequest' }
+      responses:
+        '200':
+          description: Solicitud y pedido actualizados o respuesta reproducida
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResolveCancellationResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/cancellation-requests/{requestId}/reject:
+    post:
+      tags: [Operations Cancellations]
+      operationId: rejectCancellationRequest
+      summary: Rechazar una solicitud sin modificar el pedido
+      security:
+        - DemoOperator: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RejectCancellationRequest' }
+      responses:
+        '200':
+          description: Solicitud rechazada o respuesta reproducida
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResolveCancellationResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/ops/cancellation-history:
+    get:
+      tags: [Operations Cancellations]
+      operationId: listCancellationHistory
+      summary: Listar historial terminal de cancelaciones
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [COMPLETED, REJECTED]
+        - name: reasonCode
+          in: query
+          schema: { $ref: '#/components/schemas/CancellationReasonCode' }
+        - name: rejectionCode
+          in: query
+          schema: { $ref: '#/components/schemas/RejectionCode' }
+        - name: requestedByType
+          in: query
+          schema: { $ref: '#/components/schemas/ActorType' }
+        - name: operatorId
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - $ref: '#/components/parameters/CreatedFrom'
+        - $ref: '#/components/parameters/CreatedTo'
+        - name: resolvedFrom
+          in: query
+          schema: { type: string, format: date-time }
+        - name: resolvedTo
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [requestedAt, resolvedAt, orderDisplayNumber]
+            default: resolvedAt
+        - $ref: '#/components/parameters/SortDirection'
+      responses:
+        '200':
+          description: Historial paginado
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CancellationHistoryResponse' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/mock/reset:
+    post:
+      tags: [Demo]
+      operationId: resetDemo
+      summary: Restaurar datos y escenario de demo
+      description: Esta operación no existe cuando el entorno productivo desactiva demo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetMockRequest' }
+      responses:
+        '200':
+          description: Demo restaurada
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResetMockResponse' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+components:
+  securitySchemes:
+    DemoOperator:
+      type: apiKey
+      in: header
+      name: X-Operator-Id
+      description: Identidad operacional exclusiva de demo; producción usará el actor autenticado.
+
+  headers:
+    CorrelationId:
+      description: Identificador efectivo de correlación
+      schema:
+        type: string
+        maxLength: 64
+    RateLimitLimit:
+      description: Cuota comunicada para la ventana aplicable
+      schema: { type: integer, minimum: 1 }
+    RateLimitRemaining:
+      description: Capacidad restante
+      schema: { type: integer, minimum: 0 }
+    RateLimitReset:
+      description: Segundos hasta recuperar capacidad
+      schema: { type: integer, minimum: 0 }
+    RetryAfter:
+      description: Segundos que el consumidor debe esperar
+      schema: { type: integer, minimum: 1 }
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    SortDirection:
+      name: sortDirection
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 64 }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 64 }
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 64 }
+    IdempotencyKey:
+      name: idempotencyKey
+      in: path
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 128 }
+    CreatedFrom:
+      name: createdFrom
+      in: query
+      schema: { type: string, format: date-time }
+    CreatedTo:
+      name: createdTo
+      in: query
+      schema: { type: string, format: date-time }
+
+  responses:
+    BadRequest:
+      description: Petición malformada
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    Unauthenticated:
+      description: Identidad ausente o inválida
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    Forbidden:
+      description: Identidad sin permiso
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    NotFound:
+      description: Recurso inexistente o no visible
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    Conflict:
+      description: Conflicto de dominio, versión o idempotencia
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    UnprocessableEntity:
+      description: Validación semántica
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    TooManyRequests:
+      description: Límite de peticiones excedido
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+        RateLimit-Limit: { $ref: '#/components/headers/RateLimitLimit' }
+        RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+        RateLimit-Reset: { $ref: '#/components/headers/RateLimitReset' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    InternalError:
+      description: Error inesperado sin detalle interno
+      headers:
+        X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+
+  schemas:
+    CurrencyCode:
+      type: string
+      enum: [ARS]
+    Money:
+      type: object
+      required: [amountMinor, currency]
+      properties:
+        amountMinor: { type: integer, format: int64, minimum: 0 }
+        currency: { $ref: '#/components/schemas/CurrencyCode' }
+    Pagination:
+      type: object
+      required: [page, pageSize, totalItems, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        totalItems: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    ApiErrorCategory:
+      type: string
+      enum: [VALIDATION, AUTHENTICATION, AUTHORIZATION, NOT_FOUND, CONFLICT, DOMAIN, INTERNAL]
+    ApiRecoveryAction:
+      type: string
+      enum: [RELOAD, VERIFY_COMMAND, OPEN_EXISTING_CANCELLATION, RETURN_TO_ORDER, SELECT_OPERATOR, READ_ONLY]
+    ApiError:
+      type: object
+      required: [category, code, message, correlationId, retryable]
+      properties:
+        category: { $ref: '#/components/schemas/ApiErrorCategory' }
+        code: { type: string, minLength: 1, maxLength: 100 }
+        message: { type: string, minLength: 1, maxLength: 500 }
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+        correlationId: { type: string, minLength: 1, maxLength: 64 }
+        retryable: { type: boolean }
+        recoveryAction:
+          oneOf:
+            - $ref: '#/components/schemas/ApiRecoveryAction'
+            - type: 'null'
+    ApiProblem:
+      type: object
+      required: [type, title, status, detail, instance, error]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        instance: { type: string, format: uri-reference }
+        error: { $ref: '#/components/schemas/ApiError' }
+
+    ProductSummary:
+      type: object
+      required: [id, name, description, category, imageUrl, price, availableStock, available]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        imageUrl: { type: string }
+        price: { $ref: '#/components/schemas/Money' }
+        availableStock: { type: integer, minimum: 0 }
+        available: { type: boolean }
+    ProductAttribute:
+      type: object
+      required: [name, value]
+      properties:
+        name: { type: string }
+        value: { type: string }
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/ProductSummary'
+        - type: object
+          required: [longDescription, imageUrls, attributes]
+          properties:
+            longDescription: { type: string }
+            imageUrls:
+              type: array
+              items: { type: string }
+            attributes:
+              type: array
+              items: { $ref: '#/components/schemas/ProductAttribute' }
+    ProductListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ProductSummary' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    UpdateCartItemRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity: { type: integer, minimum: 1 }
+    CartItem:
+      type: object
+      required: [productId, productName, imageUrl, unitPrice, quantity, lineTotal, availableStock]
+      properties:
+        productId: { type: string }
+        productName: { type: string }
+        imageUrl: { type: string }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        quantity: { type: integer, minimum: 1 }
+        lineTotal: { $ref: '#/components/schemas/Money' }
+        availableStock: { type: integer, minimum: 0 }
+    Cart:
+      type: object
+      required: [id, customerId, items, subtotal, totalItems, updatedAt]
+      properties:
+        id: { type: string }
+        customerId: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+        subtotal: { $ref: '#/components/schemas/Money' }
+        totalItems: { type: integer, minimum: 0 }
+        updatedAt: { type: string, format: date-time }
+
+    OrderItemStatus:
+      type: string
+      enum: [PENDING, PREPARING, READY_FOR_PICKUP, IN_TRANSIT_TO_HUB, AT_HUB, CANCELLED]
+    OrderStatus:
+      type: string
+      enum: [AWAITING_STORES, READY_TO_DISPATCH, DISPATCHED, DELIVERED]
+    OrderCancellationStatus:
+      type: string
+      enum: [NONE, PARTIAL, FULL]
+    CancellationRequestStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, COMPLETED]
+    CancellationReasonCode:
+      type: string
+      enum: [CUSTOMER_REQUEST, OUT_OF_STOCK, STORE_UNABLE, FRAUD_SUSPICION, OTHER]
+    RejectionCode:
+      type: string
+      enum: [ORDER_ALREADY_DISPATCHED, ITEM_NOT_CANCELLABLE, REQUEST_ALREADY_RESOLVED, CONCURRENT_MODIFICATION, OTHER]
+    RefundStatus:
+      type: string
+      enum: [NOT_REQUIRED, PENDING, PROCESSING, COMPLETED, FAILED]
+    ActorType:
+      type: string
+      enum: [CUSTOMER, OPERATOR, SYSTEM]
+    CustomerItemStatus:
+      type: string
+      enum: [CONFIRMED, PREPARING, ON_THE_WAY, DELIVERED, CANCELLED]
+
+    CustomerAddress:
+      type: object
+      required: [recipientName, line1, line2, city, region, postalCode, countryCode]
+      properties:
+        recipientName: { type: string }
+        line1: { type: string }
+        line2: { type: [string, 'null'] }
+        city: { type: string }
+        region: { type: string }
+        postalCode: { type: string }
+        countryCode: { type: string, minLength: 2, maxLength: 2 }
+    CustomerOrderItem:
+      type: object
+      required: [id, productId, productName, imageUrl, quantity, unitPrice, lineTotal, customerStatus, cancellable]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        productName: { type: string }
+        imageUrl: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        lineTotal: { $ref: '#/components/schemas/Money' }
+        customerStatus: { $ref: '#/components/schemas/CustomerItemStatus' }
+        cancellable: { type: boolean }
+    CustomerRefundProjection:
+      type: object
+      required: [status, amount, updatedAt]
+      properties:
+        status: { $ref: '#/components/schemas/RefundStatus' }
+        amount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        updatedAt: { type: [string, 'null'], format: date-time }
+    CustomerCancellationSummary:
+      type: object
+      required: [requestId, status, affectedAmount, requestedAt, resolvedAt, refund]
+      properties:
+        requestId: { type: string }
+        status:
+          type: string
+          enum: [PENDING, REJECTED, COMPLETED]
+        affectedAmount: { $ref: '#/components/schemas/Money' }
+        requestedAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        refund: { $ref: '#/components/schemas/CustomerRefundProjection' }
+    CustomerOrderSummary:
+      type: object
+      required: [id, displayNumber, createdAt, status, cancellationStatus, progressStatus, paidTotal, activeTotal, totalItems, cancelledItems]
+      properties:
+        id: { type: string }
+        displayNumber: { type: string }
+        createdAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        cancellationStatus: { $ref: '#/components/schemas/OrderCancellationStatus' }
+        progressStatus:
+          type: string
+          enum: [PENDING, PREPARING, READY_FOR_PICKUP, IN_TRANSIT_TO_HUB, AT_HUB, DELIVERED]
+        paidTotal: { $ref: '#/components/schemas/Money' }
+        activeTotal: { $ref: '#/components/schemas/Money' }
+        totalItems: { type: integer, minimum: 0 }
+        cancelledItems: { type: integer, minimum: 0 }
+    CustomerOrderDetail:
+      allOf:
+        - $ref: '#/components/schemas/CustomerOrderSummary'
+        - type: object
+          required: [items, deliveryAddress, cancellation, version]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/CustomerOrderItem' }
+            deliveryAddress: { $ref: '#/components/schemas/CustomerAddress' }
+            cancellation:
+              oneOf:
+                - $ref: '#/components/schemas/CustomerCancellationSummary'
+                - type: 'null'
+            version: { type: integer, format: int64, minimum: 0 }
+    CustomerOrderListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CustomerOrderSummary' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    CreateOrderRequest:
+      type: object
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+    CreateOrderResponse:
+      type: object
+      required: [order, idempotencyKey, created]
+      properties:
+        order: { $ref: '#/components/schemas/CustomerOrderDetail' }
+        idempotencyKey: { type: string }
+        created: { type: boolean }
+    CheckoutReconciliationResponse:
+      type: object
+      required: [found, idempotencyKey, order]
+      properties:
+        found:
+          type: boolean
+          description: Siempre `true` cuando la reconciliación encuentra el resultado durable.
+        idempotencyKey: { type: string }
+        order: { $ref: '#/components/schemas/CustomerOrderDetail' }
+
+    CreateCustomerCancellationRequest:
+      type: object
+      required: [itemIds, reasonCode, idempotencyKey, expectedOrderVersion]
+      properties:
+        itemIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        reasonCode: { $ref: '#/components/schemas/CancellationReasonCode' }
+        reasonNote: { type: string, maxLength: 500 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+        expectedOrderVersion: { type: integer, format: int64, minimum: 0 }
+    CustomerCancellationReceipt:
+      type: object
+      required: [requestId, orderId, status, itemIds, affectedAmount, requestedAt, idempotencyKey, created]
+      properties:
+        requestId: { type: string }
+        orderId: { type: string }
+        status: { type: string, const: PENDING }
+        itemIds:
+          type: array
+          items: { type: string }
+        affectedAmount: { $ref: '#/components/schemas/Money' }
+        requestedAt: { type: string, format: date-time }
+        idempotencyKey: { type: string }
+        created: { type: boolean }
+    CustomerCancellationReconciliationResponse:
+      type: object
+      required: [found, request]
+      properties:
+        found:
+          type: boolean
+          description: Siempre `true` cuando la reconciliación encuentra el resultado durable.
+        request: { $ref: '#/components/schemas/CustomerCancellationReceipt' }
+
+    OperatorRole:
+      type: string
+      enum: [OPERATOR, SUPERVISOR]
+    Operator:
+      type: object
+      required: [id, name, email, avatarUrl, role, active]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        avatarUrl: { type: [string, 'null'] }
+        role: { $ref: '#/components/schemas/OperatorRole' }
+        active: { type: boolean }
+    OperatorListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Operator' }
+
+    OpsCustomerSummary:
+      type: object
+      required: [id, name, email]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+    OpsOrderSummary:
+      type: object
+      required: [id, displayNumber, customer, createdAt, updatedAt, status, cancellationStatus, dispatchedAt, paidTotal, activeTotal, totalItems, cancelledItems, version]
+      properties:
+        id: { type: string }
+        displayNumber: { type: string }
+        customer: { $ref: '#/components/schemas/OpsCustomerSummary' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        cancellationStatus: { $ref: '#/components/schemas/OrderCancellationStatus' }
+        dispatchedAt: { type: [string, 'null'], format: date-time }
+        paidTotal: { $ref: '#/components/schemas/Money' }
+        activeTotal: { $ref: '#/components/schemas/Money' }
+        totalItems: { type: integer, minimum: 0 }
+        cancelledItems: { type: integer, minimum: 0 }
+        version: { type: integer, format: int64, minimum: 0 }
+    OpsOrderListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OpsOrderSummary' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    StoreProjection:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    HubProjection:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    OpsOrderItem:
+      type: object
+      required: [id, productId, productName, imageUrl, storeId, storeName, quantity, unitPrice, lineTotal, status, cancellable, cancelledAt]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        productName: { type: string }
+        imageUrl: { type: string }
+        storeId: { type: string }
+        storeName: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        lineTotal: { $ref: '#/components/schemas/Money' }
+        status: { $ref: '#/components/schemas/OrderItemStatus' }
+        cancellable: { type: boolean }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+    CancellationEligibility:
+      type: object
+      required: [eligible, eligibleItemIds, blockedBy]
+      properties:
+        eligible: { type: boolean }
+        eligibleItemIds:
+          type: array
+          items: { type: string }
+        blockedBy:
+          type: [string, 'null']
+          enum: [DISPATCHED, EFFECTIVE_CANCELLATION, NO_ELIGIBLE_ITEMS, null]
+    OpsOrderDetail:
+      allOf:
+        - $ref: '#/components/schemas/OpsOrderSummary'
+        - type: object
+          required: [items, deliveryAddress, stores, hub, activeCancellationRequestId, cancellationEligibility]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/OpsOrderItem' }
+            deliveryAddress: { $ref: '#/components/schemas/CustomerAddress' }
+            stores:
+              type: array
+              items: { $ref: '#/components/schemas/StoreProjection' }
+            hub:
+              oneOf:
+                - $ref: '#/components/schemas/HubProjection'
+                - type: 'null'
+            activeCancellationRequestId: { type: [string, 'null'] }
+            cancellationEligibility: { $ref: '#/components/schemas/CancellationEligibility' }
+
+    CancellationActor:
+      type: object
+      required: [type, id, name]
+      properties:
+        type: { $ref: '#/components/schemas/ActorType' }
+        id: { type: string }
+        name: { type: string }
+    CancellationRequestSummary:
+      type: object
+      required: [id, orderId, orderDisplayNumber, status, requestedBy, requestedAt, resolvedAt, reasonCode, requestedAmount, itemCount]
+      properties:
+        id: { type: string }
+        orderId: { type: string }
+        orderDisplayNumber: { type: string }
+        status: { $ref: '#/components/schemas/CancellationRequestStatus' }
+        requestedBy: { $ref: '#/components/schemas/CancellationActor' }
+        requestedAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        reasonCode: { $ref: '#/components/schemas/CancellationReasonCode' }
+        requestedAmount: { $ref: '#/components/schemas/Money' }
+        itemCount: { type: integer, minimum: 1 }
+    CancellationCounts:
+      type: object
+      required: [pending, completed, rejected]
+      properties:
+        pending: { type: integer, minimum: 0 }
+        completed: { type: integer, minimum: 0 }
+        rejected: { type: integer, minimum: 0 }
+    CancellationRequestListResponse:
+      type: object
+      required: [items, pagination, counts]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CancellationRequestSummary' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+        counts: { $ref: '#/components/schemas/CancellationCounts' }
+    CancellationRequestItem:
+      type: object
+      required: [itemId, productId, productName, storeId, storeName, quantity, unitPrice, requestedAmount, currentStatus, stillCancellable]
+      properties:
+        itemId: { type: string }
+        productId: { type: string }
+        productName: { type: string }
+        storeId: { type: string }
+        storeName: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        requestedAmount: { $ref: '#/components/schemas/Money' }
+        currentStatus: { $ref: '#/components/schemas/OrderItemStatus' }
+        stillCancellable: { type: boolean }
+    RefundProjection:
+      type: object
+      required: [status, amount, providerReference, updatedAt, failureCode]
+      properties:
+        status: { $ref: '#/components/schemas/RefundStatus' }
+        amount:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        providerReference: { type: [string, 'null'] }
+        updatedAt: { type: [string, 'null'], format: date-time }
+        failureCode: { type: [string, 'null'] }
+    OperationalEffectType:
+      type: string
+      enum: [INVENTORY, CUSTOMER_NOTIFICATION, REFUND]
+    OperationalEffectStatus:
+      type: string
+      enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+    OperationalEffect:
+      type: object
+      required: [type, status, updatedAt, failureCode]
+      properties:
+        type: { $ref: '#/components/schemas/OperationalEffectType' }
+        status: { $ref: '#/components/schemas/OperationalEffectStatus' }
+        updatedAt: { type: string, format: date-time }
+        failureCode: { type: [string, 'null'] }
+    AuditAction:
+      type: string
+      enum: [REQUEST_CREATED, REQUEST_APPROVED, REQUEST_REJECTED, CANCELLATION_COMPLETED, EFFECT_UPDATED]
+    AuditEvent:
+      type: object
+      required: [id, action, actor, occurredAt, note]
+      properties:
+        id: { type: string }
+        action: { $ref: '#/components/schemas/AuditAction' }
+        actor: { $ref: '#/components/schemas/CancellationActor' }
+        occurredAt: { type: string, format: date-time }
+        note: { type: [string, 'null'] }
+    CancellationInvalidatedBy:
+      type: string
+      enum: [DISPATCHED, ITEM_STATE_CHANGED, REQUEST_ALREADY_RESOLVED, CONCURRENT_MODIFICATION]
+    CancellationRequestDetail:
+      type: object
+      required: [id, orderId, orderDisplayNumber, status, requestedBy, resolvedBy, requestedAt, resolvedAt, reasonCode, reasonNote, rejectionCode, rejectionNote, items, requestedAmount, currentAffectedAmount, effectiveOrderId, expectedOrderVersion, currentOrderVersion, orderDispatchedAt, stillValid, invalidatedBy, refund, effects, audit, version]
+      properties:
+        id: { type: string }
+        orderId: { type: string }
+        orderDisplayNumber: { type: string }
+        status: { $ref: '#/components/schemas/CancellationRequestStatus' }
+        requestedBy: { $ref: '#/components/schemas/CancellationActor' }
+        resolvedBy:
+          oneOf:
+            - $ref: '#/components/schemas/CancellationActor'
+            - type: 'null'
+        requestedAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        reasonCode: { $ref: '#/components/schemas/CancellationReasonCode' }
+        reasonNote: { type: [string, 'null'] }
+        rejectionCode:
+          oneOf:
+            - $ref: '#/components/schemas/RejectionCode'
+            - type: 'null'
+        rejectionNote: { type: [string, 'null'] }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CancellationRequestItem' }
+        requestedAmount: { $ref: '#/components/schemas/Money' }
+        currentAffectedAmount: { $ref: '#/components/schemas/Money' }
+        effectiveOrderId: { type: [string, 'null'] }
+        expectedOrderVersion: { type: integer, format: int64, minimum: 0 }
+        currentOrderVersion: { type: integer, format: int64, minimum: 0 }
+        orderDispatchedAt: { type: [string, 'null'], format: date-time }
+        stillValid: { type: boolean }
+        invalidatedBy:
+          oneOf:
+            - $ref: '#/components/schemas/CancellationInvalidatedBy'
+            - type: 'null'
+        refund: { $ref: '#/components/schemas/RefundProjection' }
+        effects:
+          type: array
+          items: { $ref: '#/components/schemas/OperationalEffect' }
+        audit:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEvent' }
+        version: { type: integer, format: int64, minimum: 0 }
+
+    CreateOpsCancellationRequest:
+      type: object
+      required: [orderId, itemIds, reasonCode, idempotencyKey, expectedOrderVersion]
+      properties:
+        orderId: { type: string }
+        itemIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        reasonCode: { $ref: '#/components/schemas/CancellationReasonCode' }
+        reasonNote: { type: string, maxLength: 500 }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+        expectedOrderVersion: { type: integer, format: int64, minimum: 0 }
+    CreateOpsCancellationResponse:
+      type: object
+      required: [request, idempotencyKey, created]
+      properties:
+        request: { $ref: '#/components/schemas/CancellationRequestDetail' }
+        idempotencyKey: { type: string }
+        created: { type: boolean }
+    ApproveCancellationRequest:
+      type: object
+      required: [idempotencyKey, expectedRequestVersion, expectedOrderVersion]
+      properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+        expectedRequestVersion: { type: integer, format: int64, minimum: 0 }
+        expectedOrderVersion: { type: integer, format: int64, minimum: 0 }
+        note: { type: string, maxLength: 500 }
+    RejectCancellationRequest:
+      type: object
+      required: [idempotencyKey, expectedRequestVersion, rejectionCode]
+      properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+        expectedRequestVersion: { type: integer, format: int64, minimum: 0 }
+        rejectionCode: { $ref: '#/components/schemas/RejectionCode' }
+        rejectionNote: { type: string, maxLength: 500 }
+    ResolveCancellationResponse:
+      type: object
+      required: [request, order, replayed]
+      properties:
+        request: { $ref: '#/components/schemas/CancellationRequestDetail' }
+        order: { $ref: '#/components/schemas/OpsOrderDetail' }
+        replayed: { type: boolean }
+    IdempotencyScope:
+      type: string
+      enum: [CREATE, APPROVE, REJECT]
+    OpsCancellationReconciliationResponse:
+      type: object
+      required: [found, scope, request, order]
+      properties:
+        found:
+          type: boolean
+          description: Siempre `true` cuando la reconciliación encuentra el resultado durable.
+        scope: { $ref: '#/components/schemas/IdempotencyScope' }
+        request: { $ref: '#/components/schemas/CancellationRequestDetail' }
+        order:
+          oneOf:
+            - $ref: '#/components/schemas/OpsOrderDetail'
+            - type: 'null'
+
+    CancellationHistoryItem:
+      type: object
+      required: [requestId, orderId, orderDisplayNumber, status, reasonCode, rejectionCode, requestedBy, resolvedBy, requestedAt, resolvedAt, affectedAmount, refundStatus]
+      properties:
+        requestId: { type: string }
+        orderId: { type: string }
+        orderDisplayNumber: { type: string }
+        status:
+          type: string
+          enum: [COMPLETED, REJECTED]
+        reasonCode: { $ref: '#/components/schemas/CancellationReasonCode' }
+        rejectionCode:
+          oneOf:
+            - $ref: '#/components/schemas/RejectionCode'
+            - type: 'null'
+        requestedBy: { $ref: '#/components/schemas/CancellationActor' }
+        resolvedBy:
+          oneOf:
+            - $ref: '#/components/schemas/CancellationActor'
+            - type: 'null'
+        requestedAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time }
+        affectedAmount: { $ref: '#/components/schemas/Money' }
+        refundStatus: { $ref: '#/components/schemas/RefundStatus' }
+    CancellationHistoryResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CancellationHistoryItem' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    MockScenario:
+      type: string
+      enum: [normal, slow, empty, server-error, timeout-before-commit, timeout-after-commit, concurrent-resolution, dispatched-order]
+    ResetMockRequest:
+      type: object
+      properties:
+        scenario:
+          allOf: [{ $ref: '#/components/schemas/MockScenario' }]
+          default: normal
+    ResetMockResponse:
+      type: object
+      required: [resetAt, schemaVersion, scenario]
+      properties:
+        resetAt: { type: string, format: date-time }
+        schemaVersion: { type: integer, minimum: 1 }
+        scenario: { $ref: '#/components/schemas/MockScenario' }

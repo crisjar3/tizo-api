@@ -48,3 +48,11 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local planning and delivery work products (not part of the runtime repository)
+/.agents/
+/.specify/
+/specs/
+/deploy/
+/scripts/
+/SPRING_BOOT_API_PROFESSIONAL_GUIDE.md

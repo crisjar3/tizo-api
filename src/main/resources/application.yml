@@ -55,8 +55,27 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+  tracing:
+    export:
+      otlp:
+        enabled: ${TIZO_OTEL_EXPORT_ENABLED:false}
+    sampling:
+      probability: ${TIZO_TRACE_SAMPLING_PROBABILITY:0.1}
+    propagation:
+      produce: W3C
+      consume: W3C
+  otlp:
+    metrics:
+      export:
+        enabled: ${TIZO_OTEL_METRICS_EXPORT_ENABLED:false}
+  logging:
+    export:
+      otlp:
+        enabled: false
 
 tizo:
+  cors:
+    allowed-origins: ${TIZO_CORS_ALLOWED_ORIGINS:}
   demo:
     enabled: false
     customer-id: customer-001
@@ -65,7 +84,7 @@ tizo:
     requests-per-minute: 60
     burst-capacity: 20
     cache-maximum-size: 10000
-    trusted-proxies: 127.0.0.1,::1
+    trusted-proxies: ${TIZO_TRUSTED_PROXIES:127.0.0.1,::1}
   effects:
     fixed-delay: 5s
     lease-duration: 30s

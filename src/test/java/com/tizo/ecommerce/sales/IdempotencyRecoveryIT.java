@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.tizo.ecommerce.shared.idempotency.IdempotencyService;
 import com.tizo.ecommerce.support.PostgresIntegrationTest;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -65,6 +66,49 @@ class IdempotencyRecoveryIT extends PostgresIntegrationTest {
                 .orElseThrow();
         assertThat(objectMapper.writeValueAsBytes(reconciled))
                 .isEqualTo(objectMapper.writeValueAsBytes(committed));
+    }
+
+    @Test
+    void oneHundredEquivalentRetriesProduceOneEffectAndOneSnapshot() throws Exception {
+        AtomicInteger effects = new AtomicInteger();
+        RecoveryResult expected = null;
+
+        for (int attempt = 0; attempt < 100; attempt++) {
+            RecoveryResult current = transactions.execute(status -> idempotency.execute(
+                    "RETRY_ACCEPTANCE_TEST",
+                    "one-hundred-retries-001",
+                    Map.of("intent", "stable", "items", java.util.List.of("one", "two")),
+                    200,
+                    RecoveryResult.class,
+                    () -> {
+                        effects.incrementAndGet();
+                        return new RecoveryResult("resource-100", "CONFIRMED");
+                    },
+                    RecoveryResult::resourceId));
+            if (expected == null) {
+                expected = current;
+            }
+            assertThat(objectMapper.writeValueAsBytes(current))
+                    .isEqualTo(objectMapper.writeValueAsBytes(expected));
+        }
+
+        assertThat(effects).hasValue(1);
+        assertThat(jdbc.sql("""
+                        SELECT count(*) FROM idempotent_operation
+                        WHERE scope='RETRY_ACCEPTANCE_TEST'
+                          AND idempotency_key='one-hundred-retries-001'
+                        """).query(Long.class).single()).isEqualTo(1);
+
+        assertThatThrownBy(() -> transactions.executeWithoutResult(status -> idempotency.execute(
+                        "RETRY_ACCEPTANCE_TEST",
+                        "one-hundred-retries-001",
+                        Map.of("intent", "different"),
+                        200,
+                        RecoveryResult.class,
+                        () -> new RecoveryResult("resource-other", "CONFIRMED"),
+                        RecoveryResult::resourceId)))
+                .isInstanceOfSatisfying(com.tizo.ecommerce.shared.error.DomainException.class,
+                        exception -> assertThat(exception.code()).isEqualTo("IDEMPOTENCY_KEY_REUSED"));
     }
 
     record RecoveryResult(String resourceId, String status) {

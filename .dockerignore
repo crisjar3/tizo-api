@@ -11,8 +11,11 @@ coverage
 .env
 .env.*
 Dockerfile*
-compose*.yaml
 deploy
+scripts
 specs
 SPRING_BOOT_API_PROFESSIONAL_GUIDE.md
 README.md
+HELP.md
+compose*.yaml
+src/test

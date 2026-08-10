@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.tizo.ecommerce.sales.application.OperationalEffectWorker;
 import com.tizo.ecommerce.support.PostgresIntegrationTest;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -31,9 +32,15 @@ class OperationalEffectWorkerIT extends PostgresIntegrationTest {
     @Autowired
     private OperationalEffectWorker worker;
 
+    @Autowired
+    private MeterRegistry meterRegistry;
+
     @Test
     void completesEffectsAndRecoversExpiredLeases() throws Exception {
         String requestId = approvedCancellation();
+
+        assertThat(meterRegistry.get("tizo.operational.effects.queue.depth")
+                .tag("status", "pending").gauge().value()).isEqualTo(2);
 
         assertThat(worker.runOnce()).isEqualTo(2);
         assertThat(jdbc.sql("SELECT count(*) FROM operational_effect WHERE status='COMPLETED'")
@@ -52,6 +59,12 @@ class OperationalEffectWorkerIT extends PostgresIntegrationTest {
                         SELECT status FROM operational_effect
                         WHERE cancellation_request_id=:id AND effect_type='CUSTOMER_NOTIFICATION'
                         """).param("id", requestId).query(String.class).single()).isEqualTo("COMPLETED");
+        assertThat(meterRegistry.find("tizo.operational.effects.duration")
+                .tag("result", "completed").timers().stream()
+                .mapToLong(timer -> timer.count()).sum()).isGreaterThanOrEqualTo(3);
+        assertThat(meterRegistry.find("tizo.operational.effects")
+                .tag("result", "completed").counters().stream()
+                .mapToDouble(counter -> counter.count()).sum()).isGreaterThanOrEqualTo(3);
     }
 
     @Test

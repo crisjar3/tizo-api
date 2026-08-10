@@ -6,6 +6,11 @@ spring:
     url: ${TIZO_DB_URL}
     username: ${TIZO_DB_USERNAME}
     password: ${TIZO_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${TIZO_DB_POOL_SIZE:10}
+      minimum-idle: ${TIZO_DB_MIN_IDLE:2}
+      max-lifetime: 1500000
+      keepalive-time: 120000
   flyway:
     locations: classpath:db/migration
 
@@ -15,13 +20,39 @@ tizo:
 
 server:
   forward-headers-strategy: none
+  tomcat:
+    remoteip:
+      protocol-header: X-Forwarded-Proto
+      remote-ip-header: X-Forwarded-For
 
 management:
+  server:
+    address: 127.0.0.1
+    port: ${MANAGEMENT_PORT:8081}
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
+        add-additional-paths: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    export:
+      otlp:
+        enabled: ${TIZO_OTEL_EXPORT_ENABLED:false}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${TIZO_OTEL_ENDPOINT:http://127.0.0.1:4318/v1/traces}
 
 logging:
+  structured:
+    format:
+      console: logstash
   level:
     root: INFO
     com.tizo.ecommerce: INFO

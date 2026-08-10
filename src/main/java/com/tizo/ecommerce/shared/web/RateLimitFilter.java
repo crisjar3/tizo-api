@@ -2,6 +2,7 @@ package com.tizo.ecommerce.shared.web;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.tizo.ecommerce.shared.observability.BusinessMetrics;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
@@ -24,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final TrustedClientIpResolver clientIpResolver;
+    private final BusinessMetrics metrics;
     private final boolean enabled;
     private final long limit;
     private final long capacity;
@@ -31,11 +33,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     public RateLimitFilter(
             TrustedClientIpResolver clientIpResolver,
+            BusinessMetrics metrics,
             @Value("${tizo.rate-limit.enabled:true}") boolean enabled,
             @Value("${tizo.rate-limit.requests-per-minute:60}") long limit,
             @Value("${tizo.rate-limit.burst-capacity:20}") long burst,
             @Value("${tizo.rate-limit.cache-maximum-size:10000}") long maximumSize) {
         this.clientIpResolver = clientIpResolver;
+        this.metrics = metrics;
         this.enabled = enabled;
         this.limit = limit;
         this.capacity = burst > 0 ? burst : limit;
@@ -62,10 +66,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         response.setHeader("RateLimit-Remaining", Long.toString(probe.getRemainingTokens()));
         response.setHeader("RateLimit-Reset", Long.toString(resetSeconds));
         if (probe.isConsumed()) {
+            metrics.rateLimitRequest("allowed");
             filterChain.doFilter(request, response);
             return;
         }
 
+        metrics.rateLimitRequest("rejected");
         response.setStatus(429);
         response.setHeader("Retry-After", Long.toString(resetSeconds));
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);

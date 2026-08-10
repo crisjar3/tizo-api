@@ -2,6 +2,8 @@ package com.tizo.ecommerce.sales.application;
 
 import com.tizo.ecommerce.shared.observability.BusinessMetrics;
 import com.tizo.ecommerce.shared.persistence.AuditEventJpaAdapter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -26,6 +28,7 @@ public class OperationalEffectWorker {
             TransactionTemplate transactions,
             AuditEventJpaAdapter audit,
             BusinessMetrics metrics,
+            MeterRegistry meterRegistry,
             @Value("${tizo.effects.lease-duration:30s}") Duration leaseDuration,
             @Value("${tizo.effects.max-attempts:5}") int maxAttempts) {
         this.jdbc = jdbc;
@@ -34,6 +37,9 @@ public class OperationalEffectWorker {
         this.metrics = metrics;
         this.leaseDuration = leaseDuration;
         this.maxAttempts = maxAttempts;
+        registerQueueGauge(meterRegistry, "pending", "PENDING");
+        registerQueueGauge(meterRegistry, "processing", "PROCESSING");
+        registerQueueGauge(meterRegistry, "failed", "FAILED");
     }
 
     public int runOnce() {
@@ -76,6 +82,8 @@ public class OperationalEffectWorker {
     }
 
     private void process(EffectJob job) {
+        long startedAt = System.nanoTime();
+        String result = "error";
         try {
             if (job.payload().contains("\"simulateFailure\": true")
                     || job.payload().contains("\"simulateFailure\":true")) {
@@ -94,10 +102,34 @@ public class OperationalEffectWorker {
                         .update();
             }
             complete(job);
-            metrics.effectProcessed(job.type(), "completed");
+            result = "completed";
         } catch (EffectProcessingException exception) {
             retryOrFail(job, exception.code());
-            metrics.effectProcessed(job.type(), job.attempts() >= maxAttempts ? "failed" : "retry");
+            result = job.attempts() >= maxAttempts ? "failed" : "retry";
+        } finally {
+            metrics.effectProcessed(
+                    job.type(), result, Duration.ofNanos(System.nanoTime() - startedAt));
+        }
+    }
+
+    private void registerQueueGauge(MeterRegistry registry, String publicStatus, String databaseStatus) {
+        Gauge.builder(
+                        "tizo.operational.effects.queue.depth",
+                        this,
+                        worker -> worker.queueDepth(databaseStatus))
+                .description("Durable operational effects by queue status")
+                .tag("status", publicStatus)
+                .register(registry);
+    }
+
+    private double queueDepth(String status) {
+        try {
+            return jdbc.sql("SELECT count(*) FROM operational_effect WHERE status=:status")
+                    .param("status", status)
+                    .query(Long.class)
+                    .single();
+        } catch (RuntimeException unavailable) {
+            return Double.NaN;
         }
     }
 

@@ -2,6 +2,7 @@ package com.tizo.ecommerce.shared.observability;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -33,8 +34,14 @@ public class BusinessMetrics {
         counter("tizo.idempotency.uncertain.outcomes", "result", result).increment();
     }
 
-    public void effectProcessed(String type, String result) {
+    public void rateLimitRequest(String result) {
+        counter("tizo.rate.limit.requests", "result", result).increment();
+    }
+
+    public void effectProcessed(String type, String result, Duration duration) {
         counter("tizo.operational.effects", "type", type, "result", result).increment();
+        registry.timer("tizo.operational.effects.duration", "type", type, "result", result)
+                .record(duration);
     }
 
     private Counter counter(String name, String... tags) {

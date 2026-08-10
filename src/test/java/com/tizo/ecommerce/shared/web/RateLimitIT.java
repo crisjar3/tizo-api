@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.tizo.ecommerce.support.PostgresIntegrationTest;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +29,9 @@ class RateLimitIT extends PostgresIntegrationTest {
     @Autowired
     private MockMvc mvc;
 
+    @Autowired
+    private MeterRegistry meterRegistry;
+
     @Test
     void returnsStandardQuotaHeadersAndRetryAdvice() throws Exception {
         mvc.perform(get("/test/ok").with(request -> {
@@ -47,5 +51,18 @@ class RateLimitIT extends PostgresIntegrationTest {
                 .andExpect(header().exists("RateLimit-Reset"))
                 .andExpect(jsonPath("$.code").value("RATE_LIMIT_EXCEEDED"))
                 .andExpect(jsonPath("$.error.retryable").value(true));
+
+        org.assertj.core.api.Assertions.assertThat(meterRegistry
+                        .get("tizo.rate.limit.requests")
+                        .tag("result", "allowed")
+                        .counter()
+                        .count())
+                .isGreaterThanOrEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(meterRegistry
+                        .get("tizo.rate.limit.requests")
+                        .tag("result", "rejected")
+                        .counter()
+                        .count())
+                .isGreaterThanOrEqualTo(1);
     }
 }
