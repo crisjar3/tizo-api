@@ -58,6 +58,19 @@ $env:SPRING_PROFILES_ACTIVE = 'local'
 `createdb` sólo es necesario una vez; si informa que `tizo_test` ya existe, continúe. Las credenciales
 `tizo/tizo-local-only` son exclusivamente locales.
 
+Docker Compose también puede conectar la API local a una base externa mediante un archivo `.env`, que está excluido
+de Git. Debe definir `TIZO_DB_URL`, `TIZO_DB_USERNAME` y `TIZO_DB_PASSWORD`. Para evitar cargar datos demo en una base
+remota, configure además `SPRING_FLYWAY_LOCATIONS=classpath:db/migration`. Compose conserva los valores locales
+anteriores como fallback cuando el archivo no existe.
+
+```powershell
+docker compose --profile app up -d --build api
+docker compose logs --tail 100 api
+```
+
+Flyway aplica las migraciones al iniciar la aplicación. La base externa debe ser alcanzable desde el equipo, por
+ejemplo mediante VPN o un túnel de AWS Systems Manager; no se debe publicar PostgreSQL para habilitar desarrollo local.
+
 Servicios disponibles:
 
 | Recurso | URL |

@@ -28,10 +28,11 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: local
-      TIZO_DB_URL: jdbc:postgresql://postgres:5432/tizo
-      TIZO_DB_USERNAME: tizo
-      TIZO_DB_PASSWORD: tizo-local-only
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SPRING_FLYWAY_LOCATIONS: ${SPRING_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/local}
+      TIZO_DB_URL: ${TIZO_DB_URL:-jdbc:postgresql://postgres:5432/tizo}
+      TIZO_DB_USERNAME: ${TIZO_DB_USERNAME:-tizo}
+      TIZO_DB_PASSWORD: ${TIZO_DB_PASSWORD:-tizo-local-only}
       TIZO_RATE_LIMIT_ENABLED: ${TIZO_RATE_LIMIT_ENABLED:-true}
       MANAGEMENT_PORT: 8081
     ports:
