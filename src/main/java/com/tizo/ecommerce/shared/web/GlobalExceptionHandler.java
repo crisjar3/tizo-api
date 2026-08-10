@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -91,6 +92,12 @@ public class GlobalExceptionHandler {
         log.warn("event=database_integrity_conflict correlationId={}", CorrelationIdFilter.current());
         return response(409, "CONFLICT", "DATA_CONFLICT",
                 "La operación entra en conflicto con el estado vigente.", false, "REFRESH", List.of(), request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    ResponseEntity<ProblemDetail> handleNoRoute(NoResourceFoundException exception, HttpServletRequest request) {
+        return response(404, "NOT_FOUND", "ENDPOINT_NOT_FOUND",
+                "El endpoint solicitado no existe.", false, "NONE", List.of(), request);
     }
 
     @ExceptionHandler(Exception.class)
