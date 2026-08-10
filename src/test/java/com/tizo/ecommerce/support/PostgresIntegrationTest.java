@@ -1,5 +1,7 @@
 package com.tizo.ecommerce.support;
 
+import com.tizo.ecommerce.demo.domain.DemoScenario;
+import com.tizo.ecommerce.demo.domain.DemoScenarioState;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ActiveProfiles;
@@ -46,8 +48,14 @@ public abstract class PostgresIntegrationTest {
     @Autowired(required = false)
     private TransactionTemplate transactions;
 
+    @Autowired(required = false)
+    private DemoScenarioState demoScenarioState;
+
     @AfterEach
     void cleanMutableTables() {
+        if (demoScenarioState != null) {
+            demoScenarioState.activate(DemoScenario.NORMAL);
+        }
         if (jdbc == null || transactions == null) {
             return;
         }
@@ -64,6 +72,7 @@ public abstract class PostgresIntegrationTest {
                     WHEN 'product-004' THEN 8
                     WHEN 'product-005' THEN 0
                     ELSE stock END,
+                    active = TRUE,
                     version = 0,
                     updated_at = '2026-01-01T00:00:00Z'
                 """).update());
