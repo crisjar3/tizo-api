@@ -10,6 +10,8 @@ tizo:
     enabled: true
   rate-limit:
     enabled: false
+  effects:
+    scheduling-enabled: false
 
 management:
   server:

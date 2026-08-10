@@ -39,7 +39,9 @@ public class CustomerCancellationController implements CustomerCancellationsApi 
                         request.getReasonCode().getValue(),
                         request.getReasonNote(),
                         request.getIdempotencyKey(),
-                        request.getExpectedOrderVersion()));
+                        request.getExpectedOrderVersion(),
+                        "CUSTOMER",
+                        identity.customerId()));
         return ResponseEntity.created(URI.create("/api/me/orders/" + result.request().orderId()))
                 .body(mapper.toReceipt(result));
     }

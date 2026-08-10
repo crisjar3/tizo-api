@@ -2,6 +2,7 @@ package com.tizo.ecommerce.shared.web;
 
 import com.tizo.ecommerce.shared.error.DomainException;
 import com.tizo.ecommerce.shared.observability.CorrelationIdFilter;
+import com.tizo.ecommerce.shared.observability.BusinessMetrics;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -12,8 +13,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -34,6 +37,11 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String PROBLEM_BASE = "https://api.tizo.example/problems/";
+    private final BusinessMetrics metrics;
+
+    public GlobalExceptionHandler(BusinessMetrics metrics) {
+        this.metrics = metrics;
+    }
 
     @ExceptionHandler(DomainException.class)
     ResponseEntity<ProblemDetail> handleDomain(DomainException exception, HttpServletRequest request) {
@@ -83,8 +91,17 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({OptimisticLockException.class, OptimisticLockingFailureException.class})
     ResponseEntity<ProblemDetail> handleOptimisticLock(Exception exception, HttpServletRequest request) {
+        metrics.concurrencyConflict("optimistic_lock");
         return response(409, "CONFLICT", "STALE_VERSION",
                 "El recurso cambió; actualice la vista antes de reintentar.", false, "REFRESH", List.of(), request);
+    }
+
+    @ExceptionHandler({CannotAcquireLockException.class, PessimisticLockingFailureException.class})
+    ResponseEntity<ProblemDetail> handleDatabaseLock(Exception exception, HttpServletRequest request) {
+        metrics.concurrencyConflict("database_lock");
+        return response(409, "CONFLICT", "CONCURRENT_MODIFICATION",
+                "Otra operaciÃ³n modificÃ³ el recurso al mismo tiempo; vuelva a intentar.",
+                true, "RETRY", List.of(), request);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

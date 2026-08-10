@@ -1,6 +1,7 @@
 package com.tizo.ecommerce.shared.idempotency;
 
 import com.tizo.ecommerce.shared.error.DomainException;
+import com.tizo.ecommerce.shared.observability.BusinessMetrics;
 import com.tizo.ecommerce.shared.observability.CorrelationIdFilter;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -22,9 +23,14 @@ public class IdempotencyService {
 
     private final JpaIdempotencyAdapter adapter;
     private final ObjectMapper canonicalMapper;
+    private final BusinessMetrics metrics;
 
-    public IdempotencyService(JpaIdempotencyAdapter adapter, ObjectMapper objectMapper) {
+    public IdempotencyService(
+            JpaIdempotencyAdapter adapter,
+            ObjectMapper objectMapper,
+            BusinessMetrics metrics) {
         this.adapter = adapter;
+        this.metrics = metrics;
         this.canonicalMapper = objectMapper.rebuild()
                 .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
                 .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
@@ -44,7 +50,7 @@ public class IdempotencyService {
         adapter.acquireTransactionLock(scope, key);
         Optional<JpaIdempotencyAdapter.StoredOperation> existing = adapter.find(scope, key);
         if (existing.isPresent()) {
-            return replay(existing.get(), hash, responseType);
+            return replay(scope, existing.get(), hash, responseType);
         }
 
         T response = action.get();
@@ -75,13 +81,16 @@ public class IdempotencyService {
     }
 
     private <T> T replay(
+            String scope,
             JpaIdempotencyAdapter.StoredOperation stored,
             String currentHash,
             Class<T> responseType) {
         if (!stored.payloadHash().equals(currentHash)) {
+            metrics.idempotencyConflict(scope);
             throw DomainException.conflict("IDEMPOTENCY_KEY_REUSED",
                     "La clave idempotente ya fue usada con otra intención.");
         }
+        metrics.idempotencyReplay(scope);
         return read(stored.responseBody(), responseType);
     }
 

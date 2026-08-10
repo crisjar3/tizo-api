@@ -54,8 +54,8 @@ public class CustomerCancellationService {
                 "CANCELLATION_REQUEST",
                 request.id(),
                 "CANCELLATION_REQUESTED",
-                "CUSTOMER",
-                command.customerId(),
+                command.requestedByType(),
+                command.requestedById(),
                 "SUCCESS",
                 Map.of("orderId", command.orderId(), "itemIds", command.itemIds()));
         return new CancellationResult(request, command.idempotencyKey(), true);

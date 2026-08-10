@@ -25,6 +25,14 @@ public class BusinessMetrics {
         counter("tizo.cancellation.decisions", "result", result).increment();
     }
 
+    public void concurrencyConflict(String kind) {
+        counter("tizo.business.concurrency.conflicts", "kind", kind).increment();
+    }
+
+    public void uncertainOutcome(String result) {
+        counter("tizo.idempotency.uncertain.outcomes", "result", result).increment();
+    }
+
     public void effectProcessed(String type, String result) {
         counter("tizo.operational.effects", "type", type, "result", result).increment();
     }

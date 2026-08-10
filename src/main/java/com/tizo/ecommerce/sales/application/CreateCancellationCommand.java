@@ -11,7 +11,9 @@ public record CreateCancellationCommand(
         String reasonCode,
         String reasonNote,
         String idempotencyKey,
-        long expectedOrderVersion) {
+        long expectedOrderVersion,
+        String requestedByType,
+        String requestedById) {
 
     public CreateCancellationCommand {
         itemIds = Set.copyOf(itemIds);
@@ -25,6 +27,8 @@ public record CreateCancellationCommand(
         payload.put("reasonCode", reasonCode);
         payload.put("reasonNote", reasonNote == null ? "" : reasonNote.strip());
         payload.put("expectedOrderVersion", expectedOrderVersion);
+        payload.put("requestedByType", requestedByType);
+        payload.put("requestedById", requestedById);
         return Map.copyOf(payload);
     }
 }

@@ -24,20 +24,23 @@ public class JpaCancellationAdapter implements CancellationPort {
 
     @Override
     public CancellationRequest createPending(CreateCancellationCommand command) {
-        String orderId = jdbc.sql("""
-                        SELECT id
+        OrderRef orderRef = jdbc.sql("""
+                        SELECT id, customer_id
                         FROM customer_order
-                        WHERE id = :orderId AND customer_id = :customerId
+                        WHERE id = :orderId
+                          AND (:operatorRequest OR customer_id = :customerId)
                         FOR UPDATE
                         """)
                 .param("orderId", command.orderId())
+                .param("operatorRequest", "OPERATOR".equals(command.requestedByType()))
                 .param("customerId", command.customerId())
-                .query(String.class)
+                .query((row, number) -> new OrderRef(row.getString("id"), row.getString("customer_id")))
                 .optional()
                 .orElseThrow(() -> DomainException.notFound(
                         "ORDER_NOT_FOUND", "El pedido no existe o no pertenece al cliente."));
 
-        Order order = orders.findCustomerOrder(command.customerId(), orderId).orElseThrow();
+        String orderId = orderRef.id();
+        Order order = orders.findCustomerOrder(orderRef.customerId(), orderId).orElseThrow();
         boolean hasActiveRequest = jdbc.sql("""
                         SELECT EXISTS (
                             SELECT 1
@@ -66,23 +69,25 @@ public class JpaCancellationAdapter implements CancellationPort {
                 command.itemIds(),
                 command.reasonCode(),
                 normalizedNote(command.reasonNote()),
-                "CUSTOMER",
-                command.customerId(),
+                command.requestedByType(),
+                command.requestedById(),
                 command.expectedOrderVersion(),
                 now);
 
         jdbc.sql("""
                         INSERT INTO cancellation_request
                             (id, order_id, status, reason_code, reason, requested_by_type,
-                             requested_by_id, requested_at, updated_at, version)
-                        VALUES (:id, :orderId, 'PENDING', :reasonCode, :reason, 'CUSTOMER',
-                                :customerId, :now, :now, 0)
+                             requested_by_id, expected_order_version, requested_at, updated_at, version)
+                        VALUES (:id, :orderId, 'PENDING', :reasonCode, :reason, :actorType,
+                                :actorId, :expectedOrderVersion, :now, :now, 0)
                         """)
                 .param("id", request.id())
                 .param("orderId", request.orderId())
                 .param("reasonCode", request.reasonCode())
                 .param("reason", request.reasonNote())
-                .param("customerId", request.requestedById())
+                .param("actorType", request.requestedByType())
+                .param("actorId", request.requestedById())
+                .param("expectedOrderVersion", command.expectedOrderVersion())
                 .param("now", request.requestedAt())
                 .update();
 
@@ -101,5 +106,8 @@ public class JpaCancellationAdapter implements CancellationPort {
 
     private String normalizedNote(String note) {
         return note == null || note.isBlank() ? null : note.strip();
+    }
+
+    private record OrderRef(String id, String customerId) {
     }
 }
