@@ -206,6 +206,11 @@ public class OperationsWebMapper {
     }
 
     private OrderItemStatus orderItemStatus(String status) {
-        return OrderItemStatus.fromValue("CONFIRMED".equals(status) ? "PENDING" : status);
+        String operationalStatus = switch (status) {
+            case "CONFIRMED" -> "PENDING";
+            case "ON_THE_WAY" -> "IN_TRANSIT_TO_HUB";
+            default -> status;
+        };
+        return OrderItemStatus.fromValue(operationalStatus);
     }
 }

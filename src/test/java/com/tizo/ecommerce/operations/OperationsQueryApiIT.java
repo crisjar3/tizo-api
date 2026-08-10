@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -21,6 +22,9 @@ class OperationsQueryApiIT extends PostgresIntegrationTest {
 
     @Autowired
     private MockMvc mvc;
+
+    @Autowired
+    private JdbcClient jdbc;
 
     @Test
     void listsOperatorsOrdersAndCancellationDetails() throws Exception {
@@ -72,6 +76,27 @@ class OperationsQueryApiIT extends PostgresIntegrationTest {
                         .param("createdTo", "2026-08-09T00:00:00Z"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("INVALID_DATE_RANGE"));
+    }
+
+    @Test
+    void exposesCustomerTransitAndDeliveredItemStatesToOperations() throws Exception {
+        Fixture fixture = createPendingCancellation();
+
+        jdbc.sql("UPDATE order_item SET status='ON_THE_WAY' WHERE order_id=:orderId")
+                .param("orderId", fixture.orderId())
+                .update();
+
+        mvc.perform(get("/api/ops/orders/{orderId}", fixture.orderId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].status").value("IN_TRANSIT_TO_HUB"));
+
+        jdbc.sql("UPDATE order_item SET status='DELIVERED' WHERE order_id=:orderId")
+                .param("orderId", fixture.orderId())
+                .update();
+
+        mvc.perform(get("/api/ops/orders/{orderId}", fixture.orderId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].status").value("DELIVERED"));
     }
 
     private Fixture createPendingCancellation() throws Exception {

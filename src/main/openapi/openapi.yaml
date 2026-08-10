@@ -865,7 +865,7 @@ components:
 
     OrderItemStatus:
       type: string
-      enum: [PENDING, PREPARING, READY_FOR_PICKUP, IN_TRANSIT_TO_HUB, AT_HUB, CANCELLED]
+      enum: [PENDING, PREPARING, READY_FOR_PICKUP, IN_TRANSIT_TO_HUB, AT_HUB, DELIVERED, CANCELLED]
     OrderStatus:
       type: string
       enum: [AWAITING_STORES, READY_TO_DISPATCH, DISPATCHED, DELIVERED]
