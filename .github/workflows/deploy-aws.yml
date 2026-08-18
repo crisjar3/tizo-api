@@ -16,6 +16,7 @@ concurrency:
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  DB_SECRET_SYNC_FUNCTION: tizo-production-sync-db-secret
   OPENAPI_FILE: src/main/openapi/openapi.yaml
   REDOCLY_TELEMETRY: off
 
@@ -107,6 +108,30 @@ jobs:
           role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: false
+
+      - name: Synchronize current RDS credential
+        env:
+          FUNCTION_NAME: ${{ env.DB_SECRET_SYNC_FUNCTION }}
+        run: |
+          response_file=$(mktemp)
+          trap 'rm -f "$response_file"' EXIT
+
+          invocation=$(aws lambda invoke \
+            --function-name "$FUNCTION_NAME" \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"source":"github-deployment"}' \
+            "$response_file")
+
+          if [[ -n $(jq --raw-output '.FunctionError // empty' <<<"$invocation") ]]; then
+            echo '::error::Database credential synchronization failed.'
+            jq . "$response_file"
+            exit 1
+          fi
+
+          jq --exit-status '
+            (.status == "updated" or .status == "unchanged")
+            and (.changed | type == "boolean")
+          ' "$response_file"
 
       - name: Deploy by digest through Systems Manager
         env:
